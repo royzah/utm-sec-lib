@@ -1,0 +1,15 @@
+#!/usr/bin/env sh
+. "$(dirname -- "$0")/_/husky.sh"
+
+echo "Husky pre-commit hook is running"
+
+# Change to the utm-seclib-node directory
+cd utm-seclib-node
+
+# Run ESLint
+npx eslint -c eslint.config.mjs src/**/*.ts index.ts
+
+# Return to the root directory
+cd ..
+
+echo "Well done! No lint issues found 👏"

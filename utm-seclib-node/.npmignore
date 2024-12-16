@@ -1,0 +1,13 @@
+.git
+.gitignore
+.npmrc
+.eslintrc*
+.prettierrc*
+.husky
+node_modules
+src
+tests
+*.log
+*.tgz
+.editorconfig
+tsconfig.json
