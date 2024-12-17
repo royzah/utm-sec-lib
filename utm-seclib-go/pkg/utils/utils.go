@@ -17,8 +17,8 @@ import (
 	"github.com/joho/godotenv"
 	"github.com/nats-io/nats.go"
 	geojson "github.com/paulmach/go.geojson"
+	"github.com/royzah/utm-sec-lib/utm-seclib-go/pkg/types"
 	"github.com/rs/zerolog/log"
-	"utm-pki/pkg/types"
 )
 
 var mu sync.Mutex
@@ -282,22 +282,6 @@ func GeoJSONPolygonToPoints(gj *geojson.Geometry) []types.Point {
 	}
 
 	return points
-}
-
-func validateDateTimes(startDateTime, endDateTime string) error {
-	if startDateTime == "" {
-		return fmt.Errorf("StartDateTime is required")
-	}
-
-	if endDateTime == "" {
-		return fmt.Errorf("EndDateTime is required")
-	}
-
-	if startDateTime > endDateTime {
-		return fmt.Errorf("EndDateTime cannot be before StartDateTime")
-	}
-
-	return nil
 }
 
 func GetReaderFromJsonString(jsonStr string) (io.ReadCloser, error) {

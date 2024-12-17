@@ -11,7 +11,7 @@ import (
 	"encoding/pem"
 	"fmt"
 
-	"utm-pki/pkg/utils"
+	"github.com/royzah/utm-sec-lib/utm-seclib-go/pkg/utils"
 )
 
 var ELLIPTIC_CURVE elliptic.Curve = elliptic.P256()

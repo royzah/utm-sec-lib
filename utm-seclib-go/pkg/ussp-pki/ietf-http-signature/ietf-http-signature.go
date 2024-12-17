@@ -8,7 +8,7 @@ import (
 	"regexp"
 	"strings"
 
-	ussp_pki "utm-pki/pkg/ussp-pki"
+	ussp_pki "github.com/royzah/utm-sec-lib/utm-seclib-go/pkg/ussp-pki"
 )
 
 func CreateSignature(signatureBase string, privateKeyPem string) (string, error) {

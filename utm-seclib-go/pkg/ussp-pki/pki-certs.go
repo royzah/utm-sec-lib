@@ -12,7 +12,7 @@ import (
 	"math/big"
 	"time"
 
-	"utm-pki/pkg/utils"
+	"github.com/royzah/utm-sec-lib/utm-seclib-go/pkg/utils"
 )
 
 type CertificateAttributes struct {

@@ -18,7 +18,7 @@ import (
 	"regexp"
 	"strings"
 
-	"utm-pki/pkg/utils"
+	"github.com/royzah/utm-sec-lib/utm-seclib-go/pkg/utils"
 
 	"github.com/rs/zerolog/log"
 )

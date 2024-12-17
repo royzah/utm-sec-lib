@@ -1,4 +1,4 @@
-module utm-pki
+module github.com/royzah/utm-sec-lib/utm-seclib-go
 
 go 1.21
 

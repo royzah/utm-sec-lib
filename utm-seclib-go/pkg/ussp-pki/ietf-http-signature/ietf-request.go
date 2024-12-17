@@ -16,8 +16,8 @@ import (
 	"strings"
 	"time"
 
-	"utm-pki/pkg/types"
-	ussp_pki "utm-pki/pkg/ussp-pki"
+	"github.com/royzah/utm-sec-lib/utm-seclib-go/pkg/types"
+	ussp_pki "github.com/royzah/utm-sec-lib/utm-seclib-go/pkg/ussp-pki"
 )
 
 func CreateIETFRequest(

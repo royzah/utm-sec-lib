@@ -10,7 +10,7 @@ import (
 	"regexp"
 	"strings"
 
-	"utm-pki/pkg/types"
+	"github.com/royzah/utm-sec-lib/utm-seclib-go/pkg/types"
 )
 
 func ExtractPropertiesFromResponse(resp types.IETFSignedResponse) (*types.ExtractedProperties, error) {
