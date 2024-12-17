@@ -37,40 +37,30 @@ func parseSignatureInputFromCoveredContent(coveredContent *types.SignatureCovere
 }
 
 func ParseCoveredContentFromIETFRequest(req *types.SignedRequest) (string, error) {
-	signatureInput, exists := req.Headers["signature-input"]
-	if !exists || signatureInput == "" {
+	lines := []string{}
+
+	lines = append(lines, fmt.Sprintf(`"@method": %s`, req.Method))
+
+	authority := req.Headers["host"]
+	if authority == "" {
+		return "", fmt.Errorf("host not found in request headers")
+	}
+	lines = append(lines, fmt.Sprintf(`"@authority": %s`, authority))
+
+	lines = append(lines, fmt.Sprintf(`"@target-uri": %s`, req.URL))
+
+	if contentDigest := req.Headers["content-digest"]; contentDigest != "" {
+		lines = append(lines, fmt.Sprintf(`"content-digest": %s`, contentDigest))
+	}
+
+	sigInput := req.Headers["signature-input"]
+	if sigInput == "" {
 		return "", fmt.Errorf("signature input not found in request headers")
 	}
 
-	signatureParams := strings.Split(signatureInput, "sig1=")[1]
-	if signatureParams == "" {
-		return "", fmt.Errorf("invalid signature input format")
-	}
+	sigParams := strings.TrimPrefix(sigInput, "sig1=")
+	lines = append(lines, fmt.Sprintf(`"@signature-params": %s`, sigParams))
 
-	contentDigest, exists := req.Headers["content-digest"]
-	if !exists || contentDigest == "" {
-		return "", fmt.Errorf("content digest not found in request headers")
-	}
-
-	authority, exists := req.Headers["host"]
-	if !exists || authority == "" {
-		return "", fmt.Errorf("host not found in request headers")
-	}
-
-	components := types.HttpsSignatureComponents{
-		Method:          req.Method,
-		Authority:       authority,
-		TargetUri:       req.URL,
-		ContentDigest:   contentDigest,
-		SignatureParams: signatureParams,
-	}
-
-	var builder strings.Builder
-	builder.WriteString(fmt.Sprintf(`"@method": %s`, components.Method))
-	builder.WriteString(fmt.Sprintf("\n\"@authority\": %s", components.Authority))
-	builder.WriteString(fmt.Sprintf("\n\"@target-uri\": %s", components.TargetUri))
-	builder.WriteString(fmt.Sprintf("\n\"content-digest\": %s", components.ContentDigest))
-	builder.WriteString(fmt.Sprintf("\n\"@signature-params\": %s", components.SignatureParams))
-
-	return builder.String(), nil
+	result := strings.Join(lines, "\n")
+	return result, nil
 }

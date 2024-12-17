@@ -12,11 +12,12 @@ import (
 
 // JWK represents a JSON Web Key
 type JWK struct {
-	Alg string `json:"alg"`
-	Kty string `json:"kty"`
 	Kid string `json:"kid"`
+	Kty string `json:"kty"`
+	Alg string `json:"alg"`
 	N   string `json:"n,omitempty"`
 	E   string `json:"e,omitempty"`
+	Crv string `json:"crv,omitempty"`
 	X   string `json:"x,omitempty"`
 	Y   string `json:"y,omitempty"`
 }

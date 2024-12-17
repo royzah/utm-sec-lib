@@ -1,6 +1,6 @@
 {
   "name": "@tiiuae/utm_seclib_node",
-  "version": "2.1.1",
+  "version": "2.1.5",
   "description": "Security library for UTM system",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

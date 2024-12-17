@@ -11,10 +11,10 @@ import (
 	"strings"
 
 	"utm-pki/pkg/types"
-	ussp_pki "utm-pki/pkg/ussp-pki"
 )
 
 func ExtractPropertiesFromResponse(resp types.IETFSignedResponse) (*types.ExtractedProperties, error) {
+
 	if err := validateHeaders(resp.Headers); err != nil {
 		return nil, err
 	}
@@ -44,6 +44,10 @@ func ExtractPropertiesFromResponse(resp types.IETFSignedResponse) (*types.Extrac
 		return nil, err
 	}
 
+	if err := ValidateSignatureBaseFormat(signatureBase); err != nil {
+		return nil, fmt.Errorf("invalid signature base format: %v", err)
+	}
+
 	return &types.ExtractedProperties{
 		PublicKeyPem:  publicKeyPem,
 		Signature:     resp.Headers.Signature,
@@ -65,24 +69,6 @@ func validateHeaders(h types.ResponseHeaders) error {
 		return fmt.Errorf("content digest is missing")
 	}
 	return nil
-}
-
-func ExtractSignatureParams(signatureInput string) (keyID string, algorithm string, err error) {
-	if signatureInput == "" {
-		return keyID, algorithm, fmt.Errorf("signature input is empty")
-	}
-
-	keyIDMatch := regexp.MustCompile(`keyid="([^"]+)"`).FindStringSubmatch(signatureInput)
-	if len(keyIDMatch) > 1 {
-		keyID = keyIDMatch[1]
-	}
-
-	algMatch := regexp.MustCompile(`alg="([^"]+)"`).FindStringSubmatch(signatureInput)
-	if len(algMatch) > 1 {
-		algorithm = algMatch[1]
-	}
-
-	return keyID, algorithm, nil
 }
 
 func ValidateIETFResponse(ietfResponse *http.Response) error {
@@ -182,60 +168,8 @@ func ParseCoveredContentFromIETFResponse(ietfResponse *http.Response) (*types.Si
 	return result, nil
 }
 
-func ParseX509CertFromIETFResponse(certBase64 string) ([]*x509.Certificate, error) {
-
-	certBytes, _ := base64.StdEncoding.DecodeString(certBase64)
-
-	pemBlock, _ := pem.Decode(certBytes)
-
-	if pemBlock == nil {
-		return nil, fmt.Errorf("could not decode cert to PEM format")
-	}
-
-	return x509.ParseCertificates(pemBlock.Bytes)
-
-}
-
-func VerifyIETFResponseSignature(ietfResponse *http.Response) error {
-	if err := ValidateIETFResponse(ietfResponse); err != nil {
-		return err
-	}
-
-	// Extract keyID and algorithm
-	keyID, algorithm, err := ExtractSignatureParams(ietfResponse.Header.Get("Signature-Input"))
-	if err != nil {
-		return fmt.Errorf("failed to extract signature parameters: %v", err)
-	}
-
-	coveredContent, coveredContentErr := ParseCoveredContentFromIETFResponse(ietfResponse)
-	if coveredContentErr != nil {
-		return coveredContentErr
-	}
-
-	cert, certErr := ParseX509CertFromIETFResponse(ietfResponse.Header.Get("X-Certificate-Bundle"))
-	if certErr != nil {
-		return certErr
-	}
-
-	leafPublicKey := cert[0].PublicKey
-
-	sigBase := CreateSignatureBaseFromCoveredContent(coveredContent, keyID, algorithm)
-
-	taggedSignature := ietfResponse.Header.Get("Signature")
-	parts := strings.Split(taggedSignature, ":")
-
-	return ussp_pki.VerifyWithPublicKey(leafPublicKey, parts[1], []byte(sigBase))
-}
-
-func CreateSignatureBaseFromCoveredContent(coveredContent *types.SignatureCoveredContent, keyID string, algorithm string) string {
-	if coveredContent == nil {
-		return ""
-	}
-
-	return GetCoveredContentAsString(*coveredContent, keyID, algorithm)
-}
-
 func parseSignatureBase(resp types.IETFSignedResponse) (string, error) {
+
 	parsedURL, err := url.Parse(resp.Config.URL)
 	if err != nil {
 		return "", fmt.Errorf("error parsing URL: %v", err)
@@ -256,27 +190,33 @@ func parseSignatureBase(resp types.IETFSignedResponse) (string, error) {
 		authority = fmt.Sprintf("%s:%s", authority, port)
 	}
 
-	signatureParam := resp.Headers.SignatureInput[len("sig1="):]
+	signatureParam := resp.Headers.SignatureInput
+	signatureParam = strings.TrimPrefix(signatureParam, "sig1=")
 
-	components := map[string]string{
-		"@method":           resp.Config.Method,
-		"@authority":        authority,
-		"@target-uri":       parsedURL.RequestURI(),
-		"content-digest":    resp.Headers.ContentDigest,
-		"@signature-params": signatureParam,
+	var builder strings.Builder
+
+	methodLine := fmt.Sprintf(`"@method": %s`, resp.Config.Method)
+	builder.WriteString(methodLine)
+	builder.WriteString("\n")
+
+	authorityLine := fmt.Sprintf(`"@authority": %s`, authority)
+	builder.WriteString(authorityLine)
+	builder.WriteString("\n")
+
+	targetLine := fmt.Sprintf(`"@target-uri": %s`, parsedURL.RequestURI())
+	builder.WriteString(targetLine)
+	builder.WriteString("\n")
+
+	if resp.Headers.ContentDigest != "" {
+		digestLine := fmt.Sprintf(`"content-digest": %s`, resp.Headers.ContentDigest)
+		builder.WriteString(digestLine)
+		builder.WriteString("\n")
 	}
 
-	return createSignatureBase(components), nil
-}
+	paramsLine := fmt.Sprintf(`"@signature-params": %s`, signatureParam)
+	builder.WriteString(paramsLine)
 
-func createSignatureBase(components map[string]string) string {
-	var result string
-	for key, value := range components {
-		if key == "@signature-params" {
-			result += fmt.Sprintf("\"%s\": %s\n", key, value)
-		} else {
-			result += fmt.Sprintf("\"%s\": %s\n", key, value)
-		}
-	}
-	return result[:len(result)-1]
+	result := builder.String()
+
+	return result, nil
 }

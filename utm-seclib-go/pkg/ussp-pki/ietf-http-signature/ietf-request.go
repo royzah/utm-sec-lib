@@ -13,7 +13,6 @@ import (
 	"net/http"
 	netURL "net/url"
 	"os"
-	"regexp"
 	"strings"
 	"time"
 
@@ -308,9 +307,8 @@ func SendIETFJSONRequest(ctx context.Context, url string, method string, body in
 	return SendIETFRequest(url, body, headerMap, &config)
 }
 
-func ExtractPropertiesFromRequest(
-	req types.SignedRequest,
-) (types.ExtractedProperties, error) {
+func ExtractPropertiesFromRequest(req types.SignedRequest) (types.ExtractedProperties, error) {
+
 	if req.Headers == nil {
 		return types.ExtractedProperties{}, fmt.Errorf("request validation failed: headers are missing from the request")
 	}
@@ -322,22 +320,18 @@ func ExtractPropertiesFromRequest(
 		return types.ExtractedProperties{}, fmt.Errorf("request validation failed: missing required headers")
 	}
 
-	signatureRegex := regexp.MustCompile(`^sig1=:(.+):$`)
-	matches := signatureRegex.FindStringSubmatch(signature)
-	if len(matches) < 2 {
+	if !strings.HasPrefix(signature, "sig1=:") || !strings.HasSuffix(signature, ":") {
 		return types.ExtractedProperties{}, fmt.Errorf("request validation failed: invalid signature format")
 	}
 
-	signatureValue := matches[1]
-
 	derBytes, err := base64.StdEncoding.DecodeString(certBundle)
 	if err != nil {
-		return types.ExtractedProperties{}, fmt.Errorf("invalid certificate bundle encoding")
+		return types.ExtractedProperties{}, fmt.Errorf("invalid certificate bundle encoding: %v", err)
 	}
 
 	cert, err := x509.ParseCertificate(derBytes)
 	if err != nil {
-		return types.ExtractedProperties{}, fmt.Errorf("invalid certificate format")
+		return types.ExtractedProperties{}, fmt.Errorf("invalid certificate format: %v", err)
 	}
 
 	pubKeyPEM := pem.EncodeToMemory(&pem.Block{
@@ -347,12 +341,12 @@ func ExtractPropertiesFromRequest(
 
 	signatureBase, err := ParseCoveredContentFromIETFRequest(&req)
 	if err != nil {
-		return types.ExtractedProperties{}, fmt.Errorf("failed to parse covered content")
+		return types.ExtractedProperties{}, fmt.Errorf("failed to parse covered content: %v", err)
 	}
 
 	return types.ExtractedProperties{
 		PublicKeyPem:  string(pubKeyPEM),
-		Signature:     signatureValue,
+		Signature:     signature,
 		SignatureBase: signatureBase,
 	}, nil
 }

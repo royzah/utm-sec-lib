@@ -25,54 +25,34 @@ func CreateSignatureBase(request *types.SignedRequest, keyID string, algorithm s
 }
 
 func GetCoveredContentAsString(content types.SignatureCoveredContent, keyID string, algorithm string) string {
-	var contentDigestLine string
+	var builder strings.Builder
+
+	builder.WriteString(fmt.Sprintf(`"@method": %s`, content.Method))
+	builder.WriteString("\n")
+	builder.WriteString(fmt.Sprintf(`"@authority": %s`, content.Authority))
+	builder.WriteString("\n")
+	builder.WriteString(fmt.Sprintf(`"@target-uri": %s`, content.TargetUri))
+	builder.WriteString("\n")
+
 	if content.ContentDigest != "" {
-		contentDigestLine = fmt.Sprintf("\"content-digest\": %s\n", content.ContentDigest)
+		builder.WriteString(fmt.Sprintf(`"content-digest": %s`, content.ContentDigest))
+		builder.WriteString("\n")
 	}
 
-	base := fmt.Sprintf(
-		"\"@method\": %s\n"+
-			"\"@authority\": %s\n"+
-			"\"@target-uri\": %s\n"+
-			"%s",
-		content.Method,
-		content.Authority,
-		content.TargetUri,
-		contentDigestLine,
-	)
-
-	params := createSignatureParams(base, keyID, algorithm)
-	return fmt.Sprintf("%s%s", base, params)
-}
-
-func createSignatureParams(base string, keyID string, algorithm string) string {
-	params := getSpacedParameters(base)
-	metadata := fmt.Sprintf("created=%d;keyid=\"%s\";alg=\"%s\"", time.Now().Unix(), keyID, algorithm)
-	return fmt.Sprintf("\"@signature-params\": (%s);%s", params, metadata)
-}
-
-func getSpacedParameters(coveredContent string) string {
-
-	spacedStringLine := ""
-
-	sigParams := strings.Split(coveredContent, "\n")
-
-	numOfParams := len(sigParams)
-
-	for i, paramLine := range sigParams {
-		param := strings.Split(paramLine, ":")[0]
-		spacedStringLine += fmt.Sprintf("%s%s", param, getTrailingSpace(i, numOfParams))
+	components := []string{`"@method"`, `"@authority"`, `"@target-uri"`}
+	if content.ContentDigest != "" {
+		components = append(components, `"content-digest"`)
 	}
 
-	return spacedStringLine
-}
+	paramsStr := strings.Join(components, " ")
+	created := time.Now().Unix()
+	metadata := fmt.Sprintf(`created=%d;keyid="%s";alg="%s"`, created, keyID, algorithm)
 
-func getTrailingSpace(currentIndex int, numOfParams int) string {
-	trailingSpace := ""
-	if currentIndex < numOfParams-2 {
-		trailingSpace = " "
-	}
-	return trailingSpace
+	builder.WriteString(fmt.Sprintf(`"@signature-params": (%s);%s`, paramsStr, metadata))
+
+	result := builder.String()
+
+	return result
 }
 
 func GetJsonBytesFromString(jsonStr string) ([]byte, error) {
@@ -101,4 +81,47 @@ func SanitizeJsonString(jsonStr string) (string, error) {
 	sanitizedStr, marshalError := json.Marshal(jsonMap)
 
 	return string(sanitizedStr), marshalError
+}
+
+func ValidateSignatureBaseFormat(signatureBase string) error {
+	lines := strings.Split(signatureBase, "\n")
+
+	expectedComponents := []string{
+		`"@method":`,
+		`"@authority":`,
+		`"@target-uri":`,
+	}
+
+	for i, expected := range expectedComponents {
+		if i >= len(lines) || !strings.HasPrefix(lines[i], expected) {
+			return fmt.Errorf("component %s should be at position %d", expected, i)
+		}
+	}
+
+	remaining := lines[len(expectedComponents):]
+	hasContentDigest := false
+	hasSignatureParams := false
+
+	for _, line := range remaining {
+		if strings.HasPrefix(line, `"content-digest":`) {
+			if hasSignatureParams {
+				return fmt.Errorf("content-digest must come before @signature-params")
+			}
+			hasContentDigest = true
+		} else if strings.HasPrefix(line, `"@signature-params":`) {
+			if hasContentDigest && !strings.Contains(line, `"content-digest"`) {
+				return fmt.Errorf("content-digest header present but not included in signature params")
+			}
+			if !hasContentDigest && strings.Contains(line, `"content-digest"`) {
+				return fmt.Errorf("content-digest included in signature params but header not present")
+			}
+			hasSignatureParams = true
+		}
+	}
+
+	if !hasSignatureParams {
+		return fmt.Errorf("missing @signature-params")
+	}
+
+	return nil
 }

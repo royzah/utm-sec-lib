@@ -1,6 +1,9 @@
 package ietf_http_signature
 
 import (
+	"crypto/x509"
+	"encoding/base64"
+	"encoding/pem"
 	"fmt"
 	"regexp"
 	"strings"
@@ -17,12 +20,13 @@ func CreateSignature(signatureBase string, privateKeyPem string) (string, error)
 		return "", fmt.Errorf("signature base cannot be empty")
 	}
 
-	privateKey, err := ussp_pki.LoadPrivateKeyFromFile(privateKeyPem)
+	privateKey, err := ussp_pki.LoadPrivateKeyFromPEM(privateKeyPem)
 	if err != nil {
 		return "", fmt.Errorf("failed to load private key: %v", err)
 	}
 
-	signature, err := ussp_pki.SignDataWithPrivateKey(privateKey, []byte(signatureBase))
+	signatureBytes := []byte(signatureBase)
+	signature, err := ussp_pki.SignDataWithPrivateKey(privateKey, signatureBytes)
 	if err != nil {
 		return "", fmt.Errorf("failed to create signature: %v", err)
 	}
@@ -31,87 +35,79 @@ func CreateSignature(signatureBase string, privateKeyPem string) (string, error)
 }
 
 func ValidateSignatureBase(signatureBase string) error {
+
 	if signatureBase == "" {
-		return fmt.Errorf("signature input cannot be empty")
+		return fmt.Errorf("signature base cannot be empty")
 	}
 
-	if !findOnlyOneSignatureParamsList(signatureBase) {
-		return fmt.Errorf("signature input does not contain signature params")
+	if !strings.Contains(signatureBase, "\"@method\"") ||
+		!strings.Contains(signatureBase, "\"@authority\"") ||
+		!strings.Contains(signatureBase, "\"@target-uri\"") {
+		return fmt.Errorf("signature base missing required components")
 	}
 
-	re := regexp.MustCompile(`"@signature-params": \((".+")\)`)
-
-	subMatches := re.FindStringSubmatch(signatureBase)
-
-	if len(subMatches) != 2 {
-		return fmt.Errorf("signature input does not contain signature params")
+	paramsMatch := regexp.MustCompile(`"@signature-params": \((.+?)\);`).FindStringSubmatch(signatureBase)
+	if len(paramsMatch) != 2 {
+		return fmt.Errorf("invalid signature params format")
 	}
 
-	expectedParameters := strings.Split(subMatches[1], " ")
-
-	paramValidationErr := validateSignatureParams(expectedParameters, signatureBase)
-	if paramValidationErr != nil {
-		return paramValidationErr
-	}
-
-	re = regexp.MustCompile(`created=\d+;keyid=\"\S+\";alg=\"\S+\"`)
-	subMatches = re.FindStringSubmatch(signatureBase)
-
-	if len(subMatches) != 1 {
-		return fmt.Errorf("signature input does not contain signature metadata")
-	}
-
-	return nil
-}
-
-func validateSignatureParams(expectedParameters []string, signatureBase string) error {
-	for _, param := range expectedParameters {
-
-		regStr := fmt.Sprintf(`%s:( .+)\n`, param)
-
-		paramRegex := regexp.MustCompile(regStr)
-
-		paramMatches := paramRegex.FindStringSubmatch(signatureBase)
-
-		if len(paramMatches) != 2 {
-			return fmt.Errorf("signature parameter %s does not have a valid value: \"<sig param name>\": <value>\"", param)
+	params := strings.Split(paramsMatch[1], " ")
+	for _, param := range params {
+		param = strings.Trim(param, `"`)
+		if !strings.Contains(signatureBase, fmt.Sprintf(`"%s":`, param)) {
+			return fmt.Errorf("missing parameter value for %s", param)
 		}
-
 	}
-	return nil
-}
 
-func findOnlyOneSignatureParamsList(signatureBase string) bool {
-	return strings.Count(signatureBase, "\"@signature-params\": (") == 1
+	if !regexp.MustCompile(`created=\d+;keyid="[^"]+";alg="[^"]+"$`).MatchString(signatureBase) {
+		return fmt.Errorf("invalid metadata format")
+	}
+
+	return nil
 }
 
 func VerifySignature(publicKeyPem string, signature string, signatureBase string) bool {
-	if publicKeyPem == "" {
-		panic("Public key cannot be null or empty")
+	if publicKeyPem == "" || signature == "" || signatureBase == "" {
+		fmt.Printf("ERROR: Missing required parameters\n")
+		return false
 	}
 
-	if signature == "" {
-		panic("Signature cannot be null or empty")
+	publicKeyPem = strings.ReplaceAll(publicKeyPem, "\r\n", "\n")
+
+	block, _ := pem.Decode([]byte(publicKeyPem))
+	if block == nil {
+		fmt.Printf("ERROR: Failed to decode PEM block\n")
+		return false
 	}
 
-	if signatureBase == "" {
-		panic("Signature base cannot be null or empty")
-	}
-
-	if err := ValidateSignatureBase(signatureBase); err != nil {
-		panic(fmt.Sprintf("Invalid signature base: %v", err))
-	}
-
-	parts := strings.Split(signature, ":")
-	if len(parts) != 3 || !strings.HasPrefix(parts[0], "sig1=") {
-		panic("Invalid signature format")
-	}
-	signatureValue := parts[1]
-
-	err := ussp_pki.VerifyWithPublicKey(publicKeyPem, signatureValue, []byte(signatureBase))
+	publicKey, err := x509.ParsePKIXPublicKey(block.Bytes)
 	if err != nil {
-		panic(fmt.Sprintf("Error verifying signature: %v", err))
+		fmt.Printf("ERROR: Failed to parse public key: %v\n", err)
+		return false
 	}
 
-	return true
+	signatureValue := extractSignatureValue(signature)
+	if signatureValue == "" {
+		fmt.Printf("ERROR: Invalid signature format\n")
+		return false
+	}
+
+	signatureBytes, err := base64.StdEncoding.DecodeString(signatureValue)
+	if err != nil {
+		fmt.Printf("ERROR: Failed to decode signature: %v\n", err)
+		return false
+	}
+
+	return ussp_pki.VerifyWithPublicKey(publicKey, signatureBytes, []byte(signatureBase))
+}
+
+func extractSignatureValue(signature string) string {
+	if strings.Contains(signature, ":") {
+		parts := strings.Split(signature, ":")
+		if len(parts) != 3 || !strings.HasPrefix(parts[0], "sig1=") {
+			return ""
+		}
+		return parts[1]
+	}
+	return signature
 }

@@ -5,13 +5,18 @@ const logs = CreateLogger();
 
 export function CreateContentDigest(jsonString: string): string {
     try {
+
         const jsonData = JSON.parse(jsonString);
-        const jsonBytes = Buffer.from(JSON.stringify(jsonData, null, 2));
+        const formattedJson = JSON.stringify(jsonData);
+        
+        const jsonBytes = Buffer.from(formattedJson);
+        
         const hash = crypto.createHash('sha512');
         hash.update(jsonBytes);
         const hashedJsonBytes = hash.digest();
         const strBase64 = hashedJsonBytes.toString('base64');
-        return `sha-512=:${strBase64}:`;
+        const digest = `sha-512=:${strBase64}:`;
+        return digest;
     } catch (error) {
         const errorMessage = error instanceof Error
             ? `Invalid JSON input: ${error.message}`
